@@ -298,6 +298,13 @@
         },
         {
             "unit": "MW",
+            "name": "rating",
+            "description": "Rating",
+            "unit_system": "device_base",
+            "base_reference": "base_mva"
+        },
+        {
+            "unit": "MW",
             "name": "active_power_limits_max",
             "description": "Maximum real power StaticInjection (Unit Capacity)",
             "unit_system": "device_base",

@@ -20,6 +20,10 @@ struct PowerSystemTableData
     generator_mapping::Dict{NamedTuple, DataType}
 end
 
+function parse_float(value)
+    return tryparse(Float64, string(value))
+end
+
 function PowerSystemTableData(
     data::Dict{String, Any},
     directory::String,
@@ -199,11 +203,14 @@ end
 
 """Return a vector of user-defined fields for the category."""
 function get_user_fields(data::PowerSystemTableData, category::InputCategory)
-    if !haskey(data.user_descriptors, category)
+    # if !haskey(data.user_descriptors, category)
+    if !haskey(data.descriptors, category)
         throw(DataFormatError("Invalid category=$category"))
     end
 
-    return [x["name"] for x in data.user_descriptors[category]]
+    # return [x["name"] for x in data.descriptors[category]]
+    df = get_dataframe(data, category)
+    return [x["name"] for x in data.descriptors[category] if x["name"] in names(df)]
 end
 
 """Return the dataframe for the category."""
@@ -363,29 +370,33 @@ function branch_csv_parser!(sys::System, data::PowerSystemTableData)
         bus_to = get_bus(sys, branch.connection_points_to)
         name = get(branch, :name, get_name(bus_from) * "_" * get_name(bus_to))
         connection_points = Arc(bus_from, bus_to)
-        pf = branch.active_power_flow
-        qf = branch.reactive_power_flow
+        pf = parse_float(branch.active_power_flow)
+        qf = parse_float(branch.reactive_power_flow)
+        r = parse_float(branch.r)
+        x = parse_float(branch.x)
+        primary_shunt = parse_float(branch.primary_shunt)
+        rating = parse_float(branch.rate)
+        min_angle_limits = parse_float(branch.min_angle_limits)
+        max_angle_limits = parse_float(branch.max_angle_limits)
+        tap = parse_float(branch.tap)
 
         #TODO: noop math...Phase-Shifting Transformer angle
-        alpha = (branch.primary_shunt / 2) - (branch.primary_shunt / 2)
+        alpha = (primary_shunt / 2) - (primary_shunt / 2)
         branch_type =
             get_branch_type(branch.tap, alpha, get(branch, :is_transformer, nothing))
         if branch_type == Line
-            b = branch.primary_shunt / 2
+            b = primary_shunt / 2
             value = Line(;
                 name = name,
                 available = available,
                 active_power_flow = pf,
                 reactive_power_flow = qf,
                 arc = connection_points,
-                r = branch.r,
-                x = branch.x,
+                r = r,
+                x = x,
                 b = (from = b, to = b),
-                rating = branch.rate,
-                angle_limits = (
-                    min = branch.min_angle_limits,
-                    max = branch.max_angle_limits,
-                ),
+                rating = rating,
+                angle_limits = (min = min_angle_limits, max = max_angle_limits),
             )
         elseif branch_type == Transformer2W
             value = Transformer2W(;
@@ -394,10 +405,10 @@ function branch_csv_parser!(sys::System, data::PowerSystemTableData)
                 active_power_flow = pf,
                 reactive_power_flow = qf,
                 arc = connection_points,
-                r = branch.r,
-                x = branch.x,
-                primary_shunt = branch.primary_shunt,
-                rating = branch.rate,
+                r = r,
+                x = x,
+                primary_shunt = primary_shunt,
+                rating = rating,
             )
         elseif branch_type == TapTransformer
             value = TapTransformer(;
@@ -406,11 +417,11 @@ function branch_csv_parser!(sys::System, data::PowerSystemTableData)
                 active_power_flow = pf,
                 reactive_power_flow = qf,
                 arc = connection_points,
-                r = branch.r,
-                x = branch.x,
-                primary_shunt = branch.primary_shunt,
-                tap = branch.tap,
-                rating = branch.rate,
+                r = r,
+                x = x,
+                primary_shunt = primary_shunt,
+                tap = tap,
+                rating = rating,
             )
         elseif branch_type == PhaseShiftingTransformer
             # TODO create PhaseShiftingTransformer
@@ -444,8 +455,6 @@ function dc_branch_csv_parser!(sys::System, data::PowerSystemTableData)
         connection_points = Arc(bus_from, bus_to)
 
         if dc_branch.control_mode == "Power"
-            mw_load = dc_branch.mw_load
-
             activepowerlimits_from = make_dc_limits(
                 dc_branch,
                 :min_active_power_limit_from,
@@ -534,7 +543,8 @@ function gen_csv_parser!(sys::System, data::PowerSystemTableData)
     for field in fields
         if occursin("output_point", field)
             push!(output_point_fields, Symbol(field))
-        elseif occursin("heat_rate_", field)
+        elseif (occursin("heat_rate_", field)
+                && ~(field in ["heat_rate_a0", "heat_rate_a1", "heat_rate_a2"]))
             push!(heat_rate_fields, Symbol(field))
         elseif occursin("cost_point_", field)
             push!(cost_point_fields, Symbol(field))
@@ -831,7 +841,7 @@ function make_cost(
             create_poly_cost(gen, ["heat_rate_a0", "heat_rate_a1", "heat_rate_a2"])
     else
         cost_pairs = get_cost_pairs(gen, cost_colnames)
-        var_cost, fixed = create_pwinc_cost(cost_pairs)
+        var_cost, fixed = create_pwinc_cost(gen, cost_pairs)
     end
 
     startup_cost, shutdown_cost = calculate_uc_cost(data, gen, fuel_price)
@@ -873,7 +883,7 @@ function make_cost(
 ) where {T <: HydroGen}
     fuel_price = gen.fuel_price / 1000.0
     cost_pairs = get_cost_pairs(gen, cost_colnames)
-    var_cost, fixed = create_pwinc_cost(cost_pairs)
+    var_cost, fixed = create_pwinc_cost(gen, cost_pairs)
     op_cost = HydroGenerationCost(
         FuelCurve(var_cost, UnitSystem.NATURAL_UNITS, fuel_price),
         fixed * fuel_price)
@@ -900,7 +910,7 @@ function make_cost(
     gen,
     cost_colnames::_HeatRateColumns,
 ) where {T <: RenewableGen}
-    @warn "Heat rate parsing not valid for RenewableGen replacing with zero cost"
+    # @warn "Heat rate parsing not valid for RenewableGen replacing with zero cost"
     var_cost = CostCurve(;
         value_curve = LinearCurve(0.0),
         power_units = UnitSystem.NATURAL_UNITS,
@@ -931,16 +941,24 @@ function make_cost(
 end
 
 function get_cost_pairs(gen::NamedTuple, cost_colnames)
-    base_power = gen.base_mva * gen.active_power_limits_max
+    base_power = gen.base_mva * parse_float(gen.active_power_limits_max)
     vals = []
     for (c, pt) in cost_colnames.columns
-        x = getfield(gen, pt)
-        y = getfield(gen, c)
+        x = parse_float(getfield(gen, pt))
+        if !isnothing(x)
+            x = x * base_power
+        end
+        
+        y = parse_float(getfield(gen, c))
 
-        if !in(nothing, [x, y])
-            push!(vals,
-                (x = tryparse(Float64, string(x)) * base_power,
-                    y = tryparse(Float64, string(y))))
+        if [x, y] != [nothing, nothing]
+            if isnothing(x)
+                x = 0.0
+            end
+            if isnothing(y)
+                y = 0.0
+            end
+            push!(vals, (x = x, y = y))
         end
     end
 
@@ -1004,7 +1022,7 @@ function create_poly_cost(
 end
 
 function create_pwinc_cost(
-    cost_pairs,
+    gen, cost_pairs,
 )
     if length(cost_pairs) > 1
         x_points = getfield.(cost_pairs, :x)
@@ -1025,7 +1043,7 @@ function create_pwinc_cost(
 end
 
 function calculate_uc_cost(data, gen, fuel_cost)
-    startup_cost = gen.startup_cost
+    startup_cost = parse_float(gen.startup_cost)
     if isnothing(startup_cost)
         if !isnothing(gen.startup_heat_cold_cost)
             startup_cost = gen.startup_heat_cold_cost * fuel_cost * 1000
@@ -1034,12 +1052,16 @@ function calculate_uc_cost(data, gen, fuel_cost)
             @warn "No startup_cost defined for $(gen.name), setting to $startup_cost" maxlog =
                 5
         end
+    # else
+    #     startup_cost = parse_float(startup_cost)
     end
 
-    shutdown_cost = get(gen, :shutdown_cost, nothing)
+    shutdown_cost = parse_float(get(gen, :shutdown_cost, nothing))
     if isnothing(shutdown_cost)
         @warn "No shutdown_cost defined for $(gen.name), setting to 0.0" maxlog = 1
         shutdown_cost = 0.0
+    # else
+    #     shutdown_cost = parse_float(shutdown_cost)
     end
 
     return startup_cost, shutdown_cost
@@ -1119,7 +1141,8 @@ function make_thermal_generator(
 )
     @debug "Making ThermaStandard" _group = IS.LOG_GROUP_PARSING gen.name
     active_power_limits =
-        (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
+        (min = parse_float(gen.active_power_limits_min),
+         max = parse_float(gen.active_power_limits_max))
     (reactive_power, reactive_power_limits) = make_reactive_params(gen)
     rating = calculate_rating(active_power_limits, reactive_power_limits)
     ramplimits = make_ramplimits(gen)
@@ -1253,7 +1276,8 @@ function make_hydro_generator(
 )
     @debug "Making HydroGen" _group = IS.LOG_GROUP_PARSING gen.name
     active_power_limits =
-        (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
+        (min = parse_float(gen.active_power_limits_min),
+         max = parse_float(gen.active_power_limits_max))
     (reactive_power, reactive_power_limits) = make_reactive_params(gen)
     rating = calculate_rating(active_power_limits, reactive_power_limits)
     ramp_limits = make_ramplimits(gen)
@@ -1390,10 +1414,8 @@ function make_renewable_generator(
 )
     @debug "Making RenewableGen" _group = IS.LOG_GROUP_PARSING gen.name
     generator = nothing
-    active_power_limits =
-        (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
     (reactive_power, reactive_power_limits) = make_reactive_params(gen)
-    rating = calculate_rating(active_power_limits, reactive_power_limits)
+    rating = gen.rating    
     base_power = gen.base_mva
     operation_cost = make_cost(RenewableGen, data, gen, cost_colnames)
 
@@ -1645,7 +1667,7 @@ function _read_data_row(data::PowerSystemTableData, row, field_infos; na_to_noth
                     IS.LOG_GROUP_PARSING field_info.custom_name maxlog = 1
                 reference_value =
                     get(row, reference_info.custom_name, reference_info.default_value)
-                reference_value == "required" && throw(
+                reference_value in ["required", "NA"] && throw(
                     DataFormatError(
                         "$(reference_info.name) is required for p.u. conversion",
                     ),
