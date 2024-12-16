@@ -76,7 +76,11 @@ function get_generator_mapping(filename = nothing)
 end
 
 """Return the PowerSystems generator type for this fuel and unit_type."""
-function get_generator_type(fuel, unit_type, mappings::Dict{NamedTuple, DataType})
+function get_generator_type(fuel, unit_type, mappings::Dict{NamedTuple, DataType}, is_pumped_hydro = false)
+    if is_pumped_hydro
+        return HydroPumpedStorage
+    end
+
     fuel = isnothing(fuel) ? "" : uppercase(fuel)
     unit_type = uppercase(unit_type)
     generator = nothing

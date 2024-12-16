@@ -732,9 +732,9 @@ function services_csv_parser!(sys::System, data::PowerSystemTableData)
                 buses = get_dataframe(data, InputCategory.BUS)
                 bus_ids = buses[!, bus_id_column]
                 gen_type =
-                    get_generator_type(gen.fuel, gen.unit_type, data.generator_mapping)
+                    get_generator_type(gen.fuel, gen.unit_type, data.generator_mapping, !isnothing(gen.pump_load))
                 sys_gen = get_component(
-                    get_generator_type(gen.fuel, gen.unit_type, data.generator_mapping),
+                    get_generator_type(gen.fuel, gen.unit_type, data.generator_mapping, !isnothing(gen.pump_load)),
                     sys,
                     gen.name,
                 )
@@ -798,7 +798,7 @@ end
 function make_generator(data::PowerSystemTableData, gen, cost_colnames, bus, gen_storage)
     generator = nothing
     gen_type =
-        get_generator_type(gen.fuel, get(gen, :unit_type, nothing), data.generator_mapping)
+        get_generator_type(gen.fuel, get(gen, :unit_type, nothing), data.generator_mapping, !isnothing(gen.pump_load))
 
     if isnothing(gen_type)
         @error "Cannot recognize generator type" gen.name
@@ -962,6 +962,10 @@ function get_cost_pairs(gen::NamedTuple, cost_colnames)
         end
     end
 
+    if vals == []
+        push!(vals, (x = 0.0, y = parse_float(gen.variable_cost)))
+    end
+
     last_increasing_point = findfirst(x -> x < 0.0, [diff(getfield.(vals, :x))..., -Inf])
     return vals[1:last_increasing_point]
 end
@@ -1119,9 +1123,9 @@ function make_reactive_params(
     minfield = :reactive_power_limits_min,
     maxfield = :reactive_power_limits_max,
 )
-    reactive_power = get(gen, powerfield, 0.0)
-    reactive_power_limits_min = get(gen, minfield, nothing)
-    reactive_power_limits_max = get(gen, maxfield, nothing)
+    reactive_power = parse_float(get(gen, powerfield, 0.0))
+    reactive_power_limits_min = parse_float(get(gen, minfield, nothing))
+    reactive_power_limits_max = parse_float(get(gen, maxfield, nothing))
     if isnothing(reactive_power_limits_min) && isnothing(reactive_power_limits_max)
         reactive_power_limits = nothing
     elseif isnothing(reactive_power_limits_min)
@@ -1329,8 +1333,8 @@ function make_hydro_generator(
                 IS.LOG_GROUP_PARSING
 
             pump_active_power_limits = (
-                min = gen.pump_active_power_limits_min,
-                max = gen.pump_active_power_limits_max,
+                min = parse_float(gen.pump_active_power_limits_min),
+                max = parse_float(gen.pump_active_power_limits_max),
             )
             (pump_reactive_power, pump_reactive_power_limits) = make_reactive_params(
                 gen;
@@ -1457,15 +1461,15 @@ end
 function make_storage(data::PowerSystemTableData, gen, bus, storage)
     @debug "Making Storage" _group = IS.LOG_GROUP_PARSING storage.name
     input_active_power_limits = (
-        min = storage.input_active_power_limit_min,
-        max = storage.input_active_power_limit_max,
+        min = parse_float(storage.input_active_power_limit_min),
+        max = parse_float(storage.input_active_power_limit_max),
     )
     output_active_power_limits = (
-        min = storage.output_active_power_limit_min,
-        max = if isnothing(storage.output_active_power_limit_max)
-            gen.active_power_limits_max
+        min = parse_float(storage.output_active_power_limit_min),
+        max = if isnothing(parse_float(storage.output_active_power_limit_max))
+            parse_float(gen.active_power_limits_max)
         else
-            storage.output_active_power_limit_max
+            parse_float(storage.output_active_power_limit_max)
         end,
     )
     efficiency = (in = storage.input_efficiency, out = storage.output_efficiency)

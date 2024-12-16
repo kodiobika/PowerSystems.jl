@@ -2930,7 +2930,7 @@
                     "null_value": "0.0",
                     "data_type": "Float64",
                     "valid_range": {
-                        "min": 0,
+                        "min": null,
                         "max": null
                     },
                     "validation_action": "error",
@@ -2942,7 +2942,7 @@
                     "null_value": "0.0",
                     "data_type": "Float64",
                     "valid_range": {
-                        "min": 0,
+                        "min": null,
                         "max": null
                     },
                     "validation_action": "error",
@@ -3272,7 +3272,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
@@ -3284,7 +3284,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error"
+                    "validation_action": "warn"
                 },
                 {
                     "name": "rating_pump",
@@ -3295,7 +3295,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
@@ -3320,7 +3320,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
@@ -3332,7 +3332,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error"
+                    "validation_action": "warn"
                 },
                 {
                     "name": "storage_capacity",
@@ -3343,7 +3343,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
@@ -3355,7 +3355,7 @@
                         "min": 0,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
@@ -3364,10 +3364,10 @@
                     "null_value": "0.0",
                     "data_type": "Float64",
                     "valid_range": {
-                        "min": 0,
+                        "min": null,
                         "max": null
                     },
-                    "validation_action": "error"
+                    "validation_action": "warn"
                 },
                 {
                     "name": "initial_storage",
@@ -3375,10 +3375,10 @@
                     "null_value": "(up=0.0, down=0.0)",
                     "data_type": "UpDown",
                     "valid_range": {
-                        "min": 0,
+                        "min": null,
                         "max": null
                     },
-                    "validation_action": "error",
+                    "validation_action": "warn",
                     "needs_conversion": true
                 },
                 {
